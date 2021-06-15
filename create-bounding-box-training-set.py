@@ -36,6 +36,14 @@ for i, item in enumerate(Path(input_dir).iterdir()):
         durations.append(duration)
         bws.append(bw)
 
+results = np.empty((len(durations),2))
+
+for i in range(results.shape[0]):
+    results[i,0] = durations[i]
+    results[i,1] = bws[i]
+
+np.save('durs-bws.npy',results)
+
 
 fig, ax = plt.subplots(2,1)
 ax[0].hist(durations)
