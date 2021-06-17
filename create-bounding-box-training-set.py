@@ -31,17 +31,24 @@ for i, item in enumerate(Path(input_dir).iterdir()):
         continue
 
     signal = sigmffile.fromfile(str(item.resolve()))
+    print(str(item.resolve()))
+    print(signal.sample_count)
 
     annotations = signal.get_annotations()
 
-    min_count = min(len(annotations),min_count)
-    max_count = max(len(annotations),max_count)
+    # min_count = min(len(annotations),min_count)
+    # max_count = max(len(annotations),max_count)
 
     for annotation in signal.get_annotations():
         duration = annotation[SigMFFile.LENGTH_INDEX_KEY]
         duration_norm = duration/signal.sample_count
         if duration_norm > 1:
-            print(item.name)
+            print(f"{item.name} has a wonky duration")
+            print(f"   signal.sample_count: {signal.sample_count}")
+            print(f"   annotation[SigMFFile.LENGTH_INDEX_KEY]: {duration}")
+            print(f"   duration_norm: {duration/signal.sample_count}")
+            
+
             break
 
         freq_start = annotation.get(SigMFFile.FLO_KEY)
