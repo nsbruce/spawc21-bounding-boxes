@@ -129,3 +129,9 @@ dmypy.json
 .pyre/
 
 .env
+
+yolo-train-square/
+yolo-eval-square/
+yolo-test-square/
+full-waterfalls-eval/
+full-waterfalls-train/
