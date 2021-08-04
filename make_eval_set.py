@@ -28,28 +28,38 @@ def line_count(filename):
     return sum( buf.count(b'\n') for buf in f_gen )
 
 def main(args):
+
+    output_dir = Path(args.output_dir)
+
+    if not output_dir.exists():
+        raise FileNotFoundError (f"Output directory {output_dir} does not exist")
+
+    images_dir = output_dir / 'Images/'
+    if not images_dir.exists():
+        images_dir.mkdir()
+
     load_dotenv()  # take environment variables from .env.
 
     input_dir = os.getenv('EVAL_DIR')+'/'
-
     extension = '.sigmf-meta'
-
-    items = Path(input_dir).glob('*'+extension)
+    items = list(Path(input_dir).glob('*'+extension))
 
 
     print(f"PREPARING TO BUILD SPLIT APART SQUARE FILES")
-    output_dir = '/home/nsbruce/projects/def-msteve/nsbruce/RFI/spawc21-bounding-boxes/yolo-eval-square/'
-    square_size=1024
+    square_size = args.square_size
 
     bounds_dict=defaultdict()
-    with open(output_dir+"eval.txt", "w") as eval_list_file:
+    with open(output_dir / "eval.txt", "w") as eval_list_file:
 
-        for item in items:
+        for i, item in enumerate(items):
+            print(f' {i+1}/{len(items)}')
+
             filename = str(item.resolve())
             
-            imgs, bounds_per_img = dc.sigmf_to_evaluation_images(filename, img_w=square_size,
+            imgs, _, bounds_per_img = dc.sigmf_to_windowed_images(filename, img_w=square_size,
                                         img_h=square_size, NFFT=square_size, noverlap=square_size//2,
-                                        img_overlap=square_size//2)
+                                        img_overlap=square_size//2,
+                                        return_labels=False)
 
             imgs_maxs = [np.max(img) for img in imgs]
             vmax = max(imgs_maxs)
@@ -57,17 +67,22 @@ def main(args):
             vmin = min(imgs_mins)
 
             imgs_labels_iter = zip(imgs, bounds_per_img)
-            for i in range(len(imgs)):
+            for j in range(len(imgs)):
                 img, bound = next(imgs_labels_iter)
 
-                output_img_fname = item.stem+f'-{i}.png'
-                plt.imsave(output_dir+'Images/'+output_img_fname, img, vmin=vmin, vmax=vmax)
+                output_img_path = images_dir / (item.stem+f'-{j}.png')
+                plt.imsave(output_img_path, img, vmin=vmin, vmax=vmax)
+                bounds_dict[output_img_path.name] = bound        
 
-                eval_list_file.write(f"\n{output_dir+output_img_fname}")
+                # output_img_fname = item.stem+f'-{j}.png'
+                # plt.imsave(output_dir+'Images/'+output_img_fname, img, vmin=vmin, vmax=vmax)
 
-                bounds_dict[output_img_fname] = bound        
+                eval_list_file.write(f'{output_img_path.resolve()}\n')
+                # eval_list_file.write(f"\n{output_dir+output_img_fname}")
 
-    with open(output_dir+'bounds.pkl', 'wb') as f:
+                # bounds_dict[output_img_fname] = bound   
+
+    with open(output_dir / 'bounds.pkl', 'wb') as f:
         pickle.dump(bounds_dict, f)
 
 
@@ -81,6 +96,9 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         fromfile_prefix_chars='@'
         )
-
+    parser.add_argument('--square-size', type=int, default=1024,
+            help='image size to create')
+    parser.add_argument('--output-dir', type=str,
+            help='directory to store everything in (this script handles sub-directories)')
     args = parser.parse_args()
     main(args)

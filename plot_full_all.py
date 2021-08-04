@@ -9,9 +9,10 @@ from rfinder.config import Config
 
 load_dotenv()  # take environment variables from .env.
 
-input_dir = os.getenv('EVAL_DIR')+'/'
-input_extension = '.sigmf-meta'
-output_dir = '/home/nsbruce/projects/def-msteve/nsbruce/RFI/spawc21-bounding-boxes/full-waterfalls-eval/'
+# input_dir = os.getenv('EVAL_DIR')+'/'
+input_dir = '/home/nsbruce/RFI/spawc21-bounding-boxes/eval-temp/'
+input_extension = '_nick.sigmf-meta'
+output_dir = '/home/nsbruce/projects/def-msteve/nsbruce/RFI/spawc21-bounding-boxes/eval-temp/'
 output_extension = '.png'
 config = Config()
 
@@ -29,6 +30,7 @@ for item in items:
         continue
 
     filename = str(item.resolve())
+    print(filename)
 
     fig, ax = plt.subplots(1,1,figsize=(6,6))
 
