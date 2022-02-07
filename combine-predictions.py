@@ -60,25 +60,42 @@ def json_objects_to_boxes(objects:Dict, threshold:float)->List[rt.Box]:
 
 def main(args):
 
-    output_dir = Path(args.output_dir)
-    
-    if not output_dir.exists():
-        raise FileNotFoundError (f"Output directory {output_dir} does not exist")
+    input_dir = Path(args.input_dir)
 
+    
+    if not input_dir.exists():
+        raise FileNotFoundError (f"Input directory {input_dir} does not exist")
+    output_dir = input_dir / 'combined/'
+    if not output_dir.exists():
+        output_dir.mkdir()
+    # images_dir = input_dir / 'Images/'
+    # if not images_dir.exists():
+    #     raise FileNotFoundError(f"Can't find images and labels in {images_dir}")
+    bounds_file = input_dir / 'bounds.pkl'
+    if not bounds_file.exists():
+        raise FileNotFoundError(f"Can't find bounds pickle file at {bounds_file}")
+    results_json = input_dir / 'result.json'
+    if not results_json.exists():
+        raise FileNotFoundError(f"Can't find results json file at {results_json}")
+    
     config = Config()
 
-    load_dotenv()  # take environment variables from .env.
-    if args.eval_set:
-        sigmf_dir = os.getenv('EVAL_DIR')+'/'
+    if args.sigmf_dir:
+        sigmf_dir = Path(args.sigmf_dir)
+        
     else:
-        sigmf_dir = os.getenv('TRAIN_DIR')+'/'
+        load_dotenv()  # take environment variables from .env.
+        if args.eval_set:
+            sigmf_dir = Path(os.getenv('EVAL_DIR')+'/')
+        else:
+            sigmf_dir = Path(os.getenv('TRAIN_DIR')+'/')
 
 
-    with open(args.bounds_file, 'rb') as pkl_file:
+    with open(bounds_file, 'rb') as pkl_file:
         bounds_dict = pickle.load(pkl_file)
     
 
-    with open(args.results_json, 'r') as results_json:
+    with open(results_json, 'r') as results_json:
         preds_json = json.load(results_json)
 
     preds_dict = defaultdict(defaultdict)
@@ -93,43 +110,25 @@ def main(args):
             preds_dict[sigmf_name][img_name] = defaultdict()
             preds_dict[sigmf_name][img_name] = img_boxes
     
-    isFirst=True
     for sigmf_name, imgs_dict in preds_dict.items():
-        # if not args.eval_set and sigmf_name != 'west-wideband-modrec-ex3-tmpl8-20.04.sigmf-meta':
-        #     continue
-        # if args.eval_set and sigmf_name != 'wesst-wideband-modrec-ex15-tmpl3-20.04.sigmf-meta':
-        #     continue
 
         print(sigmf_name)
 
-        signal = sigmffile.fromfile(sigmf_dir+sigmf_name)
-
-        if isFirst or args.plot:
-
-            samples = signal.read_samples(start_index=0, count=signal.sample_count)
-            fs = signal.get_global_field(SigMFFile.SAMPLE_RATE_KEY)
-            fc = signal.get_global_field(SigMFFile.FREQUENCY_KEY, 0)
-            spec, freqs, times = dc.timeseries_to_waterfall(x=samples, NFFT=config.sigmf.nfft,
-                                                            noverlap=config.sigmf.noverlap, Fs=fs, Fc=fc)
-
-            df = freqs[1]-freqs[0]
-            dt = times[1]-times[0]
-
-            isFirst=False
+        signal = sigmffile.fromfile(str((sigmf_dir / sigmf_name).resolve()))
 
         pred_boxes = []
         print('   getting boxes')
 
         for img_fname, img_boxes in imgs_dict.items():
-            # print(f"img_fname: {img_fname}")
-            # print(f"img_bound: {img_bound.as_list()} ")
             img_bound = bounds_dict[img_fname]
+
+            df = img_bound.w/args.square_size
+            dt = img_bound.h/args.square_size
+
             for img_box in img_boxes:
-                # print(f"  img_box before: {img_box.as_list()}")
                 img_box.scale(cy=args.square_size, cx=args.square_size, w=args.square_size, h=args.square_size)
                 img_box.scale(cx=df, cy=dt, w=df, h=dt)
                 img_box.shift(x=img_bound.cx-img_bound.w/2, y=img_bound.cy-img_bound.h/2)
-                # print(f"  img_box after: {img_box.as_list()}")
                 pred_boxes.append(img_box)
 
                 
@@ -147,8 +146,15 @@ def main(args):
             pickle.dump(merged_boxes, f)
         
         if args.plot:
+
+            samples = signal.read_samples(start_index=0, count=signal.sample_count)
+            fs = signal.get_global_field(SigMFFile.SAMPLE_RATE_KEY)
+            fc = signal.get_global_field(SigMFFile.FREQUENCY_KEY, 0)
+            spec, freqs, times = dc.timeseries_to_waterfall(x=samples, NFFT=config.sigmf.nfft,
+                                                            noverlap=config.sigmf.noverlap, Fs=fs, Fc=fc)
+
             # get annotation boxes
-            labels = dc.sigmf_to_boxes(sigmf_dir+sigmf_name)
+            labels = dc.sigmf_to_boxes(str((sigmf_dir / sigmf_name).resolve()))
             print(f'   have {len(labels)} boxes from true annotations')
 
             print('   plotting')
@@ -182,10 +188,10 @@ def main(args):
                 start_index=0
             if start_index+len_samples > signal.sample_count:
                 len_samples = signal.sample_count-start_index
-            if f1 < -0.5:
-                f1=-0.5
-            if f2 > 0.5:
-                f2 = 0.5
+            if f1 < fc-fs/2:
+                f1=fc-fs/2
+            if f2 > fc+fs/2:
+                f2 = fc+fs/2
 
 
             try:
@@ -195,13 +201,13 @@ def main(args):
                     metadata={
                         SigMFFile.FLO_KEY: f1,
                         SigMFFile.FHI_KEY: f2,
-                        SigMFFile.AUTHOR_KEY: 'nick'
+                        SigMFFile.AUTHOR_KEY: 'nick',
                     }
                 )
             except AssertionError:
                 print(f'COULD NOT ADD THIS ANNOTATION! {box.as_list()}')
         
-        signal.tofile(output_dir / (Path(sigmf_name).stem+'_nick.sigmf-meta'))
+        signal.tofile(output_dir / (Path(sigmf_name).stem+'.sigmf-meta'))
 
 
         print()
@@ -215,14 +221,12 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         fromfile_prefix_chars='@'
         )
-    parser.add_argument('--results-json', type=str,
-            help='path to json file containing the predictions (in darknet label format)')
-    parser.add_argument('--bounds-file', type=str,
-            help='pickle file containing bounds of each image')
+    parser.add_argument('--input-dir', type=str,
+            help='directory containing predictions json, bounds pickle, and a subdirectory with images')
     parser.add_argument('--eval-set', default=False, action='store_true',
         help='Which sigmf dataset to draw sigmf files from')
-    parser.add_argument('--output-dir', type=str,
-            help='directory to store output images and bounding boxes (pickles) in')
+    parser.add_argument('--sigmf-dir', type=str,
+            help='directory containing the sigmf files (used if --eval-set is not called)')
     parser.add_argument('--square-size', type=int, default=1024,
             help='image size to expect')
     parser.add_argument('--threshold', type=float, default=0.25,
