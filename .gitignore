@@ -131,4 +131,4 @@ dmypy.json
 .env
 
 results/
-full-train-images/
+full-train-imgs/
